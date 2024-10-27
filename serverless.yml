@@ -5,7 +5,6 @@ useDotenv: true
 plugins:
   - serverless-esbuild
   - serverless-iam-roles-per-function
-  - serverless-scriptable-plugin
 
 custom:
   esbuild:
