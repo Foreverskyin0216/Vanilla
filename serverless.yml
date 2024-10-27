@@ -16,8 +16,7 @@ custom:
 package:
   individually: true
   patterns:
-    - '!node_modules/**'
-    - '.env'
+    - '!.env'
 
 provider:
   name: aws
@@ -27,6 +26,7 @@ provider:
   timeout: 29
   stage: v1
   logRetentionInDays: 30
+  profile: ${env:AWS_PROFILE, 'default'}
 
   httpApi:
     cors: true
@@ -49,16 +49,12 @@ functions:
   LineBot:
     handler: src/handlers/lineBot.handler
     timeout: 180
-    package:
-      include:
-        - src/utils/debug-commands.yml
     iamRoleStatements:
       - Effect: Allow
         Action:
           - ssm:GetParameter
         Resource:
-          - !Ref LineAccessTokenParameter
-          - !Ref OpenAIApiKeyParameter
+          - !Sub arn:aws:ssm:${self:provider.region}:${AWS::AccountId}:parameter/vanilla/*
       - Effect: Allow
         Action:
           - dynamodb:GetItem
@@ -70,9 +66,31 @@ functions:
           - !GetAtt MessageTable.Arn
           - !GetAtt ChatConfigurationTable.Arn
           - !GetAtt CheckpointsTable.Arn
+          - !GetAtt CheckpointWritesTable.Arn
 
 resources:
   Resources:
+    LineBotTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: lintbot-topic
+
+    LintBotSnsSubscription:
+      Type: AWS::SNS::Subscription
+      Properties:
+        TopicArn:
+          Ref: LineBotTopic
+        Protocol: lambda
+        Endpoint: !GetAtt LineBotLambdaFunction.Arn
+
+    LineBotSnsPermission:
+      Type: AWS::Lambda::Permission
+      Properties:
+        Action: lambda:InvokeFunction
+        FunctionName: !GetAtt LineBotLambdaFunction.Arn
+        Principal: sns.amazonaws.com
+        SourceArn: !Ref LineBotTopic
+
     SelfBotInstance:
       Type: AWS::EC2::Instance
       Properties:
@@ -95,6 +113,11 @@ resources:
       Type: AWS::EC2::SecurityGroup
       Properties:
         GroupDescription: SelfBotSecurityGroup
+        SecurityGroupIngress:
+          - IpProtocol: tcp
+            FromPort: 22
+            ToPort: 22
+            CidrIp: 0.0.0.0/0
 
     SelfBotProfile:
       Type: AWS::IAM::InstanceProfile
@@ -105,6 +128,8 @@ resources:
     SelfBotRole:
       Type: AWS::IAM::Role
       Properties:
+        Path: /
+        RoleName: VanillaServiceRole
         AssumeRolePolicyDocument:
           Version: '2012-10-17'
           Statement:
@@ -115,13 +140,14 @@ resources:
         Policies:
           - PolicyName: SelfBotPolicy
             PolicyDocument:
-              Version: 2012-10-17
+              Version: '2012-10-17'
               Statement:
                 - Effect: Allow
                   Action:
                     - ssm:GetParameter
                     - ssm:PutParameter
-                  Resource: arn:aws:ssm:${self:provider.region}:${AWS::AccountId}:parameter/vanilla/*
+                  Resource:
+                    - !Sub arn:aws:ssm:${self:provider.region}:${AWS::AccountId}:parameter/vanilla/*
                 - Effect: Allow
                   Action:
                     - dynamodb:GetItem
@@ -133,6 +159,7 @@ resources:
                     - !GetAtt MessageTable.Arn
                     - !GetAtt ChatConfigurationTable.Arn
                     - !GetAtt CheckpointsTable.Arn
+                    - !GetAtt CheckpointWritesTable.Arn
 
     LineEmailParameter:
       Type: AWS::SSM::Parameter
@@ -148,7 +175,7 @@ resources:
         Type: String
         Value: ${env:LINE_PASSWORD}
 
-    LineAccessTokenParameter:
+    LineChannelAccessTokenParameter:
       Type: AWS::SSM::Parameter
       Properties:
         Name: /vanilla/line/channelAccessToken
@@ -167,14 +194,14 @@ resources:
       Properties:
         TableName: Message
         AttributeDefinitions:
-          - AttributeName: groupId
+          - AttributeName: thread_id
             AttributeType: S
-          - AttributeName: createdAt
+          - AttributeName: created_at
             AttributeType: N
         KeySchema:
-          - AttributeName: groupId
+          - AttributeName: thread_id
             KeyType: HASH
-          - AttributeName: createdAt
+          - AttributeName: created_at
             KeyType: RANGE
         BillingMode: PAY_PER_REQUEST
 
@@ -183,10 +210,10 @@ resources:
       Properties:
         TableName: ChatConfiguration
         AttributeDefinitions:
-          - AttributeName: groupId
+          - AttributeName: thread_id
             AttributeType: S
         KeySchema:
-          - AttributeName: groupId
+          - AttributeName: thread_id
             KeyType: HASH
         BillingMode: PAY_PER_REQUEST
 

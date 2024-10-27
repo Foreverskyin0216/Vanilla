@@ -1,9 +1,7 @@
-import { readFileSync } from 'fs'
-import { join } from 'path'
-
 import yaml from 'yaml'
 import minimist from 'minimist'
 
+import { DEBUG_COMMANDS } from './commands'
 import { logger } from './logger'
 
 interface Command {
@@ -23,11 +21,10 @@ interface CommandParameter {
  */
 export const parseDebugCommand = (message: string) => {
   try {
-    const args = message.split(/\s+(?=(?:[^"]*"[^"]*")*[^"]*$)/).map((arg) => arg.replaceAll('"', ''))
-
-    const filePath = join(__dirname, './debug-commands.yml')
-    const { commands } = yaml.parse(readFileSync(filePath, 'utf8')) as { commands: Command[] }
-    const command = commands.find(({ name }) => name === args[1])
+    const expr = /\s+(?=(?:[^"]*"[^"]*")*[^"]*$)/
+    const args = message.split(expr).map((arg) => arg.replaceAll('"', ''))
+    const { commands } = yaml.parse(DEBUG_COMMANDS)
+    const command = (commands as Command[]).find(({ name }) => name === args[1])
 
     const minimistOpts = command.parameters?.reduce(
       (acc, { name, alias, default: defaultValue }) => {

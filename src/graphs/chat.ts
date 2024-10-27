@@ -22,7 +22,7 @@ interface ChatState {
 }
 
 const shouldInvoke = async (_: ChatState, { configurable }: RunnableConfig) => {
-  const modelName = (configurable?.modelName ?? 'gpt-4o-mini') as string
+  const modelName = (configurable?.model_name ?? 'gpt-4o-mini') as string
   const question = (configurable?.question ?? '') as string
 
   const openAI = new OpenAI()
@@ -42,7 +42,7 @@ const shouldInvoke = async (_: ChatState, { configurable }: RunnableConfig) => {
 
 const searchNode = async ({ messages }: ChatState, { configurable }: RunnableConfig) => {
   const question = (configurable?.question ?? '') as string
-  const modelName = (configurable?.modelName ?? 'gpt-4o-mini') as string
+  const modelName = (configurable?.model_name ?? 'gpt-4o-mini') as string
   const openAI = new ChatOpenAI({ modelName }).bindTools(toolkit)
   const response = await openAI.invoke([new HumanMessage(question), ...messages])
   return { messages: [response] }
@@ -54,8 +54,8 @@ const shouldUseSearchTools = ({ messages }: ChatState) => {
 }
 
 const chatNode = async ({ conversation }: ChatState, { configurable }: RunnableConfig) => {
-  const chatMode = (configurable?.chatMode ?? 'normal') as string
-  const modelName = (configurable?.modelName ?? 'gpt-4o-mini') as string
+  const chatMode = (configurable?.chat_mode ?? 'normal') as string
+  const modelName = (configurable?.model_name ?? 'gpt-4o-mini') as string
   const question = (configurable?.question ?? '') as string
 
   const openAI = new ChatOpenAI({ modelName, temperature: 1 })
@@ -76,8 +76,8 @@ const chatNode = async ({ conversation }: ChatState, { configurable }: RunnableC
 }
 
 const adjustmentNode = async ({ messages }: ChatState, { configurable }: RunnableConfig) => {
-  const chatMode = (configurable?.chatMode ?? 'normal') as string
-  const modelName = (configurable?.modelName ?? 'gpt-4o-mini') as string
+  const chatMode = (configurable?.chat_mode ?? 'normal') as string
+  const modelName = (configurable?.model_name ?? 'gpt-4o-mini') as string
   const message = messages[messages.length - 1]
 
   const openAI = new ChatOpenAI({ modelName })
@@ -106,10 +106,8 @@ export const chatGraph = () => {
   })
   const checkpointer = createDynamoDBSaver()
 
-  const summarizationNode = summarizationGraph().compile({ checkpointer })
-
   const graph = new StateGraph(annotation)
-    .addNode('summarization', summarizationNode)
+    .addNode('summarization', summarizationGraph())
     .addNode('search', searchNode)
     .addNode('chat', chatNode)
     .addNode('adjustment', adjustmentNode)

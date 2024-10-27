@@ -6,31 +6,28 @@ import { chatGraph } from '../graphs/chat'
 
 import { clearMessages, getConfiguration, setConfiguration, storeMessage } from '../services/dynamoDB'
 import { reply, getProfile } from '../services/messagingAPI'
+import { getParameter } from '../services/ssm'
 
 import { logger } from '../utils/logger'
 import { parseDebugCommand } from '../utils/parser'
 
 const NAME = '香草'
 
-const chat = async (groupId: string, question: string) => {
-  const message = new HumanMessage(question)
-  let configuration = await getConfiguration(groupId)
-
+const chat = async (thread_id: string, question: string) => {
+  let configuration = await getConfiguration(thread_id)
   if (!configuration) {
-    const defaultConfiguration = { groupId, chatMode: 'normal', modelName: 'gpt-4o-mini' }
+    const defaultConfiguration = { thread_id, chat_mode: 'normal', model_name: 'gpt-4o-mini' }
     await setConfiguration(defaultConfiguration)
     configuration = defaultConfiguration
   }
 
   const { conversation } = await chatGraph().invoke(
-    { conversation: [message], messages: [message] },
     {
-      configurable: {
-        chatMode: configuration.chatMode || 'normal',
-        modelName: configuration.modelName || 'gpt-4o-mini',
-        question,
-        thread_id: groupId
-      }
+      conversation: [new HumanMessage(question)],
+      messages: [new HumanMessage(question)]
+    },
+    {
+      configurable: { question, ...configuration }
     }
   )
   const response = conversation[conversation.length - 1].content.toString()
@@ -38,8 +35,9 @@ const chat = async (groupId: string, question: string) => {
   return response.replace(`${NAME}：`, '') as string
 }
 
-const debug = async (groupId: string, replyToken: string, message: TextEventMessage) => {
-  const { command, params, error } = parseDebugCommand(message.text)
+const debug = async (thread_id: string, replyToken: string, message: TextEventMessage) => {
+  const question = message.text.replaceAll(`@${NAME}`, '').trim()
+  const { command, params, error } = parseDebugCommand(question)
   if (error) {
     await reply(replyToken, [{ type: 'text', text: error, quoteToken: message.quoteToken }])
     return
@@ -47,9 +45,9 @@ const debug = async (groupId: string, replyToken: string, message: TextEventMess
 
   switch (command) {
     case 'info': {
-      let configuration = await getConfiguration(groupId)
+      let configuration = await getConfiguration(thread_id)
       if (!configuration) {
-        const defaultConfiguration = { groupId, chatMode: 'normal', modelName: 'gpt-4o-mini' }
+        const defaultConfiguration = { thread_id, chat_mode: 'normal', model_name: 'gpt-4o-mini' }
         await setConfiguration(defaultConfiguration)
         configuration = defaultConfiguration
       }
@@ -61,22 +59,22 @@ const debug = async (groupId: string, replyToken: string, message: TextEventMess
     }
 
     case 'configure': {
-      const chatMode = params['chat-mode'] || 'normal'
-      const modelName = params['model'] || 'gpt-4o-mini'
-      await setConfiguration({ groupId, chatMode, modelName })
+      const chat_mode = params['chat-mode'] || 'normal'
+      const model_name = params['model'] || 'gpt-4o-mini'
+      await setConfiguration({ thread_id, chat_mode, model_name })
       await reply(replyToken, [{ type: 'text', text: 'OK', quoteToken: message.quoteToken }])
       break
     }
 
     case 'cleanup': {
-      await clearMessages(groupId)
+      await clearMessages(thread_id)
       await reply(replyToken, [{ type: 'text', text: 'OK', quoteToken: message.quoteToken }])
       break
     }
   }
 }
 
-export const lineBot = async (event: SNSEvent, context: Context) => {
+export const handler = async (event: SNSEvent, context: Context) => {
   logger.addContext(context)
   const { events } = JSON.parse(event.Records[0].Sns.Message)
 
@@ -88,13 +86,14 @@ export const lineBot = async (event: SNSEvent, context: Context) => {
     const { replyToken, message } = event
     const { displayName } = await getProfile(source.groupId, source.userId)
     const question = message.text.replaceAll(`@${NAME}`, '').trim()
-    await storeMessage({ groupId: source.groupId, content: `${displayName}：${question}` })
+    await storeMessage({ thread_id: source.groupId, content: `${displayName}：${question}` })
 
     if (message.text.includes(`@${NAME}`)) {
       if (question.includes('debug')) {
         await debug(source.groupId, replyToken, message)
       }
 
+      process.env.OPENAI_API_KEY = await getParameter('/vanilla/openai/apiKey')
       const response = await chat(source.groupId, `${displayName}：${question}`)
 
       return reply(replyToken, [{ type: 'text', text: response, quoteToken: message.quoteToken }])

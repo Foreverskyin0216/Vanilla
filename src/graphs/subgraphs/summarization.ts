@@ -10,7 +10,7 @@ import { ChatOpenAI } from '@langchain/openai'
 import { collapseDocs, splitListOfDocs } from 'langchain/chains/combine_documents/reduce'
 
 import { MAP_PROMPT, REDUCE_PROMPT } from '../../prompts'
-import { getMessages } from '../../services/dynamoDB'
+import { createDynamoDBSaver, getMessages } from '../../services/dynamoDB'
 
 interface OverallState {
   chatHistory: AIMessage[]
@@ -35,9 +35,9 @@ const countTokens = async (documents: Document[], modelName: string = 'gpt-4o-mi
 }
 
 const readChatHistory = async (_: SummarizationState, { configurable }: RunnableConfig) => {
-  const thread = (configurable?.thread_id ?? '') as string
-  const messages = await getMessages(thread, 1)
-  return { chatHistory: messages.slice(-100).map(({ content }) => new HumanMessage(content)) }
+  const thread_id = (configurable?.thread_id ?? '') as string
+  const messages = await getMessages(thread_id)
+  return { chatHistory: messages.slice(-200).map(({ content }) => new HumanMessage(content)) }
 }
 
 const mapSummaries = ({ chatHistory }: OverallState) => {
@@ -45,7 +45,7 @@ const mapSummaries = ({ chatHistory }: OverallState) => {
 }
 
 const generateSummary = async ({ message }: SummarizationState, { configurable }: RunnableConfig) => {
-  const modelName = (configurable?.modelName ?? 'gpt-4o-mini') as string
+  const modelName = (configurable?.model_name ?? 'gpt-4o-mini') as string
   const chain = RunnableSequence.from([
     new PromptTemplate({ template: MAP_PROMPT, inputVariables: ['context', 'requirements'] }),
     new ChatOpenAI({ modelName }),
@@ -65,7 +65,7 @@ const collectSummaries = ({ summaries }: OverallState) => {
 }
 
 const collapseSummaries = async (state: OverallState, { configurable }: RunnableConfig) => {
-  const modelName = (configurable?.modelName ?? 'gpt-4o-mini') as string
+  const modelName = (configurable?.model_name ?? 'gpt-4o-mini') as string
   const chain = RunnableSequence.from([
     new PromptTemplate({ template: REDUCE_PROMPT, inputVariables: ['docs', 'requirements'] }),
     new ChatOpenAI({ modelName }),
@@ -92,7 +92,7 @@ const shouldCollapse = async ({ collapsedSummaries }: OverallState) => {
 }
 
 const generateFinalSummary = async (state: OverallState, { configurable }: RunnableConfig) => {
-  const modelName = (configurable?.modelName ?? 'gpt-4o-mini') as string
+  const modelName = (configurable?.model_name ?? 'gpt-4o-mini') as string
   const chain = RunnableSequence.from([
     new PromptTemplate({ template: REDUCE_PROMPT, inputVariables: ['docs', 'requirements'] }),
     new ChatOpenAI({ modelName, temperature: 0 }),
@@ -115,6 +115,7 @@ export const summarizationGraph = () => {
     messages: Annotation<AIMessage[]>({ reducer: (x, y) => x.concat(y) }),
     summaries: Annotation<AIMessage[]>({ reducer: (x, y) => x.concat(y) })
   })
+  const checkpointer = createDynamoDBSaver()
 
   const graph = new StateGraph(annotation)
     .addNode('readChatHistory', readChatHistory)
@@ -129,5 +130,5 @@ export const summarizationGraph = () => {
     .addConditionalEdges('collapseSummaries', shouldCollapse, ['collapseSummaries', 'generateFinalSummary'])
     .addEdge('generateFinalSummary', '__end__')
 
-  return graph
+  return graph.compile({ checkpointer })
 }

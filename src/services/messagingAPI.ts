@@ -16,12 +16,12 @@ export const reply = async (replyToken: string, messages: Message[]) => {
   }
 }
 
-export const getProfile = async (groupId: string, userId: string) => {
+export const getProfile = async (thread_id: string, userId: string) => {
   try {
     const client = new messagingApi.MessagingApiClient({
       channelAccessToken: await getParameter('/vanilla/line/channelAccessToken')
     })
-    return client.getGroupMemberProfile(groupId, userId)
+    return client.getGroupMemberProfile(thread_id, userId)
   } catch (error) {
     logger.error(error)
     throw error

@@ -24,12 +24,12 @@ import { SEARCH_PROMPT, RETRIEVAL_PROMPT } from '../prompts'
 export const toolkit = [
   tool(
     async (_, { configurable }: RunnableConfig) => {
-      const modelName = (configurable?.modelName ?? 'gpt-4o-mini') as string
+      const model_name = (configurable?.model_name ?? 'gpt-4o-mini') as string
       const question = (configurable?.question ?? '') as string
 
       const openAI = new OpenAI()
       const completion = await openAI.beta.chat.completions.parse({
-        model: modelName,
+        model: model_name,
         temperature: 0,
         messages: [
           { role: 'system', content: SEARCH_PROMPT },
@@ -53,7 +53,7 @@ export const toolkit = [
 
   tool(
     async ({ link }, { configurable }: RunnableConfig) => {
-      const modelName = (configurable?.modelName ?? 'gpt-4o-mini') as string
+      const model_name = (configurable?.model_name ?? 'gpt-4o-mini') as string
       const question = (configurable?.question ?? '') as string
 
       const loader = new CheerioWebBaseLoader(link)
@@ -62,7 +62,7 @@ export const toolkit = [
       const store = await MemoryVectorStore.fromDocuments(await splitter.splitDocuments(docs), new OpenAIEmbeddings())
 
       const chain = await createStuffDocumentsChain({
-        llm: new ChatOpenAI({ modelName }),
+        llm: new ChatOpenAI({ model_name }),
         outputParser: new StringOutputParser(),
         prompt: new PromptTemplate({ template: RETRIEVAL_PROMPT, inputVariables: ['question', 'context'] })
       })

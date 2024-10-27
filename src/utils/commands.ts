@@ -1,3 +1,4 @@
+export const DEBUG_COMMANDS = `
 commands:
   - name: configure
     parameters:
@@ -28,3 +29,4 @@ commands:
     parameters: ~
   - name: revoke
     parameters: ~
+`

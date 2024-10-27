@@ -21,15 +21,15 @@ import {
 import { logger } from '../utils/logger'
 
 interface Message {
-  groupId: string
-  createdAt: number
+  thread_id: string
+  created_at: number
   content: string
 }
 
 interface Configuration {
-  groupId: string
-  chatMode: string
-  modelName: string
+  thread_id: string
+  chat_mode: string
+  model_name: string
 }
 
 /**
@@ -250,21 +250,18 @@ class DynamoDBSaver extends BaseCheckpointSaver {
 export const createDynamoDBSaver = () => new DynamoDBSaver({ clientConfig: { region: process.env.AWS_REGION } })
 
 /**
- * Get chat history within a specific number of days.
+ * Get all messages in a chat group.
  *
- * @param {string} groupId - The chat group ID.
- * @param {number} [days] - Optional number of days to get chat history.
+ * @param {string} thread_id - The chat thread ID.
  */
-export const getMessages = async (groupId: string, days?: number) => {
+export const getMessages = async (thread_id: string) => {
   try {
     const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION }))
     const queryCommand = new QueryCommand({
       TableName: 'Message',
-      KeyConditionExpression: 'groupId = :groupId' + (days && ' AND createdAt BETWEEN :start AND :end'),
-      ExpressionAttributeValues: {
-        ':groupId': groupId,
-        ...(days && { ':start': Date.now() - days * 24 * 60 * 60 * 1000, ':end': Date.now() })
-      },
+      KeyConditionExpression: '#thread_id = :thread_id',
+      ExpressionAttributeNames: { '#thread_id': 'thread_id' },
+      ExpressionAttributeValues: { ':thread_id': thread_id },
       ScanIndexForward: true
     })
 
@@ -281,16 +278,16 @@ export const getMessages = async (groupId: string, days?: number) => {
 }
 
 /**
- * Store a message to a chat group. The createdAt field will be automatically generated.
+ * Store a message to a chat group. The created_at field will be automatically generated.
  *
  * @param {Object} message - The message to store.
- * @param {string} [message.groupId] - The chat group ID.
+ * @param {string} [message.thread_id] - The chat group ID.
  * @param {string} [message.content] - The message content.
  */
-export const storeMessage = async (message: Omit<Message, 'createdAt'>) => {
+export const storeMessage = async (message: Omit<Message, 'created_at'>) => {
   try {
     const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION }))
-    const putCommand = new PutCommand({ TableName: 'Message', Item: { ...message, createdAt: Date.now() } })
+    const putCommand = new PutCommand({ TableName: 'Message', Item: { ...message, created_at: Date.now() } })
     return client.send(putCommand)
   } catch (error) {
     logger.error(error)
@@ -301,15 +298,15 @@ export const storeMessage = async (message: Omit<Message, 'createdAt'>) => {
 /**
  * Clear all messages in a chat group.
  *
- * @param {string} groupId - The group Id used to find all messages to delete.
+ * @param {string} thread_id - The group Id used to find all messages to delete.
  */
-export const clearMessages = async (groupId: string) => {
+export const clearMessages = async (thread_id: string) => {
   try {
-    const messages = await getMessages(groupId)
+    const messages = await getMessages(thread_id)
     const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION }))
     return Promise.all(
-      messages.map(({ createdAt }) => {
-        return client.send(new DeleteCommand({ TableName: 'Message', Key: { groupId, createdAt } }))
+      messages.map(({ created_at }) => {
+        return client.send(new DeleteCommand({ TableName: 'Message', Key: { thread_id, created_at } }))
       })
     )
   } catch (error) {
@@ -321,15 +318,15 @@ export const clearMessages = async (groupId: string) => {
 /**
  * Get the configuration of a chat group.
  *
- * @param {string} groupId - The chat group ID used to get the configuration.
+ * @param {string} thread_id - The chat group ID used to get the configuration.
  */
-export const getConfiguration = async (groupId: string) => {
+export const getConfiguration = async (thread_id: string) => {
   try {
     const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION }))
     const queryCommand = new QueryCommand({
       TableName: 'ChatConfiguration',
-      KeyConditionExpression: 'groupId = :groupId',
-      ExpressionAttributeValues: { ':groupId': groupId }
+      KeyConditionExpression: 'thread_id = :thread_id',
+      ExpressionAttributeValues: { ':thread_id': thread_id }
     })
 
     const { Items } = await client.send(queryCommand)
@@ -348,9 +345,9 @@ export const getConfiguration = async (groupId: string) => {
  * Set the configuration of a chat group.
  *
  * @param {Object} configuration - The configuration to set.
- * @param {string} configuration.groupId - The chat group ID.
- * @param {string} configuration.chatMode - The chat mode.
- * @param {string} configuration.modelName - The model name.
+ * @param {string} configuration.thread_id - The chat group ID.
+ * @param {string} configuration.chat_mode - The chat mode.
+ * @param {string} configuration.model_name - The model name.
  */
 export const setConfiguration = async (configuration: Configuration) => {
   try {

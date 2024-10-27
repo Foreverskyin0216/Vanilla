@@ -27,12 +27,8 @@ class SelfBot {
     this.client = new Client()
 
     this.client.on('ready', async () => {
-      const refreshToken = this.client.storage.get('refreshToken') as string
-      await setParameter('/vanilla/line/refreshToken', refreshToken)
-
-      const openaiApiKey = await getParameter('/vanilla/openai/apiKey')
-      process.env.OPENAI_API_KEY = openaiApiKey
-
+      process.env.OPENAI_API_KEY = await getParameter('/vanilla/openai/apiKey')
+      await setParameter('/vanilla/line/refreshToken', this.client.storage.get('refreshToken') as string)
       logger.info('Logged in')
     })
 
@@ -47,7 +43,7 @@ class SelfBot {
           if (contentType === 'NONE' && content) {
             const user = await author.displayName
             const question = content.replaceAll(`@${this.name}`, '').trim()
-            await storeMessage({ groupId: squareChatMid, content: `${user}：${question}` })
+            await storeMessage({ thread_id: squareChatMid, content: `${user}：${question}` })
 
             if (contentMetadata?.MENTION && content.includes(`@${this.name}`)) {
               if (question.includes('debug')) {
@@ -80,8 +76,8 @@ class SelfBot {
       case 'info': {
         let configuration = await getConfiguration(squareChatMid)
         if (!configuration) {
-          await setConfiguration({ groupId: squareChatMid, chatMode: 'normal', modelName: 'gpt-4o-mini' })
-          configuration = { groupId: squareChatMid, chatMode: 'normal', modelName: 'gpt-4o-mini' }
+          await setConfiguration({ thread_id: squareChatMid, chat_mode: 'normal', model_name: 'gpt-4o-mini' })
+          configuration = { thread_id: squareChatMid, chat_mode: 'normal', model_name: 'gpt-4o-mini' }
         }
         const message = Object.entries(configuration)
           .map(([key, value]) => `${key}：${value}`)
@@ -91,9 +87,9 @@ class SelfBot {
       }
 
       case 'configure': {
-        const chatMode = params['chat-mode'] || 'normal'
-        const modelName = params['model'] || 'gpt-4o-mini'
-        await setConfiguration({ groupId: squareChatMid, chatMode, modelName })
+        const chat_mode = params['chat-mode'] || 'normal'
+        const model_name = params['model'] || 'gpt-4o-mini'
+        await setConfiguration({ thread_id: squareChatMid, chat_mode, model_name })
         break
       }
 
@@ -121,24 +117,20 @@ class SelfBot {
     return 'OK'
   }
 
-  private async chat(squareChatMid: string, question: string) {
-    const message = new HumanMessage(question)
-    let configuration = await getConfiguration(squareChatMid)
-
+  private async chat(thread_id: string, question: string) {
+    let configuration = await getConfiguration(thread_id)
     if (!configuration) {
-      await setConfiguration({ groupId: squareChatMid, chatMode: 'normal', modelName: 'gpt-4o-mini' })
-      configuration = { groupId: squareChatMid, chatMode: 'normal', modelName: 'gpt-4o-mini' }
+      await setConfiguration({ thread_id, chat_mode: 'normal', model_name: 'gpt-4o-mini' })
+      configuration = { thread_id, chat_mode: 'normal', model_name: 'gpt-4o-mini' }
     }
 
     const { conversation } = await chatGraph().invoke(
-      { conversation: [message], messages: [message] },
       {
-        configurable: {
-          chatMode: configuration.chatMode || 'normal',
-          modelName: configuration.modelName || 'gpt-4o-mini',
-          question,
-          thread_id: squareChatMid
-        }
+        conversation: [new HumanMessage(question)],
+        messages: [new HumanMessage(question)]
+      },
+      {
+        configurable: { question, ...configuration }
       }
     )
     const response = conversation[conversation.length - 1].content.toString()
