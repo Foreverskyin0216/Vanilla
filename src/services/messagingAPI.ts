@@ -1,29 +1,16 @@
 import { messagingApi } from '@line/bot-sdk'
 import { getParameter } from '../services/ssm'
-import { logger } from '../utils/logger'
 
 export type Message = messagingApi.ImageMessage | messagingApi.TextMessage
 
 export const reply = async (replyToken: string, messages: Message[]) => {
-  try {
-    const client = new messagingApi.MessagingApiClient({
-      channelAccessToken: await getParameter('/vanilla/line/channelAccessToken')
-    })
-    return client.replyMessage({ replyToken, messages })
-  } catch (error) {
-    logger.error(error)
-    throw error
-  }
+  const channelAccessToken = await getParameter('/vanilla/line/channelAccessToken')
+  const client = new messagingApi.MessagingApiClient({ channelAccessToken })
+  return client.replyMessage({ replyToken, messages })
 }
 
 export const getProfile = async (thread_id: string, userId: string) => {
-  try {
-    const client = new messagingApi.MessagingApiClient({
-      channelAccessToken: await getParameter('/vanilla/line/channelAccessToken')
-    })
-    return client.getGroupMemberProfile(thread_id, userId)
-  } catch (error) {
-    logger.error(error)
-    throw error
-  }
+  const channelAccessToken = await getParameter('/vanilla/line/channelAccessToken')
+  const client = new messagingApi.MessagingApiClient({ channelAccessToken })
+  return client.getGroupMemberProfile(thread_id, userId)
 }

@@ -2,7 +2,6 @@ import yaml from 'yaml'
 import minimist from 'minimist'
 
 import { DEBUG_COMMANDS } from './commands'
-import { logger } from './logger'
 
 interface Command {
   name: string
@@ -53,11 +52,7 @@ export const parseDebugCommand = (message: string) => {
     )
 
     return { command: command.name, params: parsedParams }
-  } catch (error) {
-    if (error.name === 'TypeError') {
-      return { error: 'Invalid command format' }
-    }
-    logger.error(error)
-    throw error
+  } catch {
+    return { error: 'Invalid command format' }
   }
 }

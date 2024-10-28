@@ -18,15 +18,13 @@ import {
   BaseCheckpointSaver
 } from '@langchain/langgraph-checkpoint'
 
-import { logger } from '../utils/logger'
-
-interface Message {
+export interface Message {
   thread_id: string
   created_at: number
   content: string
 }
 
-interface Configuration {
+export interface Configuration {
   thread_id: string
   chat_mode: string
   model_name: string
@@ -126,20 +124,18 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
   }
 
   async *list(config: RunnableConfig, options: { limit?: number; before?: RunnableConfig }) {
-    const { limit, before } = options ?? {}
+    const { limit, before } = options
     const thread_id = config.configurable?.thread_id
-    const expressionAttributeValues = { ':thread_id': thread_id }
-    let keyConditionExpression = 'thread_id = :thread_id'
-
-    if (before?.configurable?.checkpoint_id) {
-      keyConditionExpression += ' AND checkpoint_id < :before_checkpoint_id'
-      expressionAttributeValues[':beforeCheckpointId'] = before.configurable.checkpoint_id
-    }
 
     const queryCommand = new QueryCommand({
       TableName: this.checkpoint,
-      KeyConditionExpression: keyConditionExpression,
-      ExpressionAttributeValues: expressionAttributeValues,
+      KeyConditionExpression:
+        'thread_id = :thread_id' +
+        (before?.configurable?.checkpoint_id ? ' AND checkpoint_id < :before_checkpoint_id' : ''),
+      ExpressionAttributeValues: {
+        ':thread_id': thread_id,
+        ...(before?.configurable?.checkpoint_id && { ':before_checkpoint_id': before.configurable.checkpoint_id })
+      },
       Limit: limit,
       ScanIndexForward: false
     })
@@ -173,7 +169,7 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
     }
   }
 
-  async put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata) {
+  async put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata | Uint8Array) {
     const { thread_id, checkpoint_ns } = config.configurable
     const [checkpointType, serializedCheckpoint] = this.dumpsTyped(checkpoint)
     const [metadataType, serializedMetadata] = this.dumpsTyped(metadata)
@@ -258,26 +254,18 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
  * @param {string} thread_id - The chat thread ID.
  */
 export const getMessages = async (thread_id: string) => {
-  try {
-    const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION }))
-    const queryCommand = new QueryCommand({
-      TableName: 'Message',
-      KeyConditionExpression: '#thread_id = :thread_id',
-      ExpressionAttributeNames: { '#thread_id': 'thread_id' },
-      ExpressionAttributeValues: { ':thread_id': thread_id },
-      ScanIndexForward: true
-    })
+  const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION }))
+  const queryCommand = new QueryCommand({
+    TableName: 'Message',
+    KeyConditionExpression: '#thread_id = :thread_id',
+    ExpressionAttributeNames: { '#thread_id': 'thread_id' },
+    ExpressionAttributeValues: { ':thread_id': thread_id },
+    ScanIndexForward: true
+  })
 
-    const { Items } = await client.send(queryCommand)
+  const { Items } = await client.send(queryCommand)
 
-    return Items as Message[]
-  } catch (error) {
-    if (error.name === 'ResourceNotFoundException') {
-      return []
-    }
-    logger.error(error)
-    throw error
-  }
+  return (Items ? Items : []) as Message[]
 }
 
 /**
@@ -288,14 +276,9 @@ export const getMessages = async (thread_id: string) => {
  * @param {string} [message.content] - The message content.
  */
 export const storeMessage = async (message: Omit<Message, 'created_at'>) => {
-  try {
-    const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION }))
-    const putCommand = new PutCommand({ TableName: 'Message', Item: { ...message, created_at: Date.now() } })
-    return client.send(putCommand)
-  } catch (error) {
-    logger.error(error)
-    throw error
-  }
+  const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION }))
+  const putCommand = new PutCommand({ TableName: 'Message', Item: { ...message, created_at: Date.now() } })
+  return client.send(putCommand)
 }
 
 /**
@@ -304,18 +287,15 @@ export const storeMessage = async (message: Omit<Message, 'created_at'>) => {
  * @param {string} thread_id - The group Id used to find all messages to delete.
  */
 export const clearMessages = async (thread_id: string) => {
-  try {
-    const messages = await getMessages(thread_id)
-    const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION }))
-    return Promise.all(
-      messages.map(({ created_at }) => {
-        return client.send(new DeleteCommand({ TableName: 'Message', Key: { thread_id, created_at } }))
-      })
-    )
-  } catch (error) {
-    logger.error(error)
-    throw error
-  }
+  const messages = await getMessages(thread_id)
+  const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION }))
+  return Promise.all(
+    messages.map(({ created_at }) => {
+      const command = new DeleteCommand({ TableName: 'Message', Key: { thread_id, created_at } })
+      const request = client.send(command)
+      return request
+    })
+  )
 }
 
 /**
@@ -324,24 +304,16 @@ export const clearMessages = async (thread_id: string) => {
  * @param {string} thread_id - The chat group ID used to get the configuration.
  */
 export const getConfiguration = async (thread_id: string) => {
-  try {
-    const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION }))
-    const queryCommand = new QueryCommand({
-      TableName: 'ChatConfiguration',
-      KeyConditionExpression: 'thread_id = :thread_id',
-      ExpressionAttributeValues: { ':thread_id': thread_id }
-    })
+  const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION }))
+  const queryCommand = new QueryCommand({
+    TableName: 'ChatConfiguration',
+    KeyConditionExpression: 'thread_id = :thread_id',
+    ExpressionAttributeValues: { ':thread_id': thread_id }
+  })
 
-    const { Items } = await client.send(queryCommand)
+  const { Items } = await client.send(queryCommand)
 
-    return Items?.length ? (Items[0] as Configuration) : undefined
-  } catch (error) {
-    if (error.name === 'ResourceNotFoundException') {
-      return undefined
-    }
-    logger.error(error)
-    throw error
-  }
+  return Items?.length ? (Items[0] as Configuration) : undefined
 }
 
 /**
@@ -353,59 +325,52 @@ export const getConfiguration = async (thread_id: string) => {
  * @param {string} configuration.model_name - The model name.
  */
 export const setConfiguration = async (configuration: Configuration) => {
-  try {
-    const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION }))
-    const putCommand = new PutCommand({ TableName: 'ChatConfiguration', Item: configuration })
-    return client.send(putCommand)
-  } catch (error) {
-    logger.error(error)
-    throw error
-  }
+  const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION }))
+  const putCommand = new PutCommand({ TableName: 'ChatConfiguration', Item: configuration })
+  return client.send(putCommand)
 }
 
 /**
  * Clear all checkpoints in a chat group.
  */
 export const clearCheckpoints = async (thread_id: string) => {
-  try {
-    const requests = []
-    const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION }))
-    const queryCommand = new QueryCommand({
-      TableName: 'Checkpoint',
-      KeyConditionExpression: 'thread_id = :thread_id',
-      ExpressionAttributeValues: { ':thread_id': thread_id }
-    })
+  const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION }))
+  const queryCommand = new QueryCommand({
+    TableName: 'Checkpoint',
+    KeyConditionExpression: 'thread_id = :thread_id',
+    ExpressionAttributeValues: { ':thread_id': thread_id }
+  })
+  const { Items } = await client.send(queryCommand)
 
-    const { Items } = await client.send(queryCommand)
-    for (const { checkpoint_id } of Items ?? []) {
-      const deleteCommand = new DeleteCommand({ TableName: 'Checkpoint', Key: { thread_id, checkpoint_id } })
-      requests.push(client.send(deleteCommand))
-    }
+  const requests = []
 
-    const checkpointWriteIds = Array.from(
-      new Set((Items ?? []).map((item) => [thread_id, item.checkpoint_id, item.checkpoint_ns].join(':::')))
-    )
-    for (const checkpointWriteId of checkpointWriteIds) {
-      const queryCommand = new QueryCommand({
-        TableName: 'CheckpointWrite',
-        KeyConditionExpression: 'thread_id_checkpoint_id_checkpoint_ns = :checkpoint_write_id',
-        ExpressionAttributeValues: { ':checkpoint_write_id': checkpointWriteId }
-      })
-      const { Items } = await client.send(queryCommand)
-      for (const { task_index } of Items ?? []) {
-        const request = client.send(
-          new DeleteCommand({
-            TableName: 'CheckpointWrite',
-            Key: { thread_id_checkpoint_id_checkpoint_ns: checkpointWriteId, task_index }
-          })
-        )
-        requests.push(request)
-      }
-    }
-
-    return Promise.all(requests)
-  } catch (error) {
-    logger.error(error)
-    throw error
+  for (const { checkpoint_id } of Items ?? []) {
+    const deleteCommand = new DeleteCommand({ TableName: 'Checkpoint', Key: { thread_id, checkpoint_id } })
+    const request = client.send(deleteCommand)
+    requests.push(request)
   }
+
+  const checkpoint_write_ids = (Items ?? []).map((item) =>
+    [thread_id, item.checkpoint_id, item.checkpoint_ns].join(':::')
+  )
+
+  for (const checkpoint_write_id of Array.from(new Set(checkpoint_write_ids))) {
+    const queryCommand = new QueryCommand({
+      TableName: 'CheckpointWrite',
+      KeyConditionExpression: 'thread_id_checkpoint_id_checkpoint_ns = :checkpoint_write_id',
+      ExpressionAttributeValues: { ':checkpoint_write_id': checkpoint_write_id }
+    })
+    const { Items } = await client.send(queryCommand)
+
+    for (const { task_index } of Items ?? []) {
+      const command = new DeleteCommand({
+        TableName: 'CheckpointWrite',
+        Key: { thread_id_checkpoint_id_checkpoint_ns: checkpoint_write_id, task_index }
+      })
+      const request = client.send(command)
+      requests.push(request)
+    }
+  }
+
+  return Promise.all(requests)
 }
