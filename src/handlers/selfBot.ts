@@ -1,3 +1,4 @@
+import 'dotenv/config'
 process.env.AWS_REGION = process.env.AWS_REGION || 'ap-southeast-2'
 
 import { Client } from '@evex/linejs'
@@ -5,7 +6,7 @@ import { Client } from '@evex/linejs'
 import { HumanMessage } from '@langchain/core/messages'
 import { chatGraph } from '../graphs/chat'
 
-import { clearMessages, getConfiguration, setConfiguration, storeMessage } from '../services/dynamoDB'
+import { clearCheckpoints, clearMessages, getConfiguration, setConfiguration, storeMessage } from '../services/dynamoDB'
 import { getParameter, setParameter } from '../services/ssm'
 
 import { logger } from '..//utils/logger'
@@ -102,7 +103,7 @@ class SelfBot {
       }
 
       case 'cleanup': {
-        await clearMessages(squareChatMid)
+        await Promise.all([clearCheckpoints(squareChatMid), clearMessages(squareChatMid)])
         break
       }
 
@@ -133,6 +134,7 @@ class SelfBot {
         configurable: { question, ...configuration }
       }
     )
+
     const response = conversation[conversation.length - 1].content.toString()
 
     return response.replace(`${this.name}：`, '') as string

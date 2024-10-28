@@ -4,7 +4,7 @@ import { type Context, type SNSEvent } from 'aws-lambda'
 import { HumanMessage } from '@langchain/core/messages'
 import { chatGraph } from '../graphs/chat'
 
-import { clearMessages, getConfiguration, setConfiguration, storeMessage } from '../services/dynamoDB'
+import { clearCheckpoints, clearMessages, getConfiguration, setConfiguration, storeMessage } from '../services/dynamoDB'
 import { reply, getProfile } from '../services/messagingAPI'
 import { getParameter } from '../services/ssm'
 
@@ -35,7 +35,7 @@ const chat = async (thread_id: string, question: string) => {
   return response.replace(`${NAME}：`, '') as string
 }
 
-const debug = async (thread_id: string, replyToken: string, message: TextEventMessage) => {
+const debug = async (replyToken: string, thread_id: string, message: TextEventMessage) => {
   const question = message.text.replaceAll(`@${NAME}`, '').trim()
   const { command, params, error } = parseDebugCommand(question)
   if (error) {
@@ -67,7 +67,7 @@ const debug = async (thread_id: string, replyToken: string, message: TextEventMe
     }
 
     case 'cleanup': {
-      await clearMessages(thread_id)
+      await Promise.all([clearCheckpoints(thread_id), clearMessages(thread_id)])
       await reply(replyToken, [{ type: 'text', text: 'OK', quoteToken: message.quoteToken }])
       break
     }
@@ -83,18 +83,19 @@ export const handler = async (event: SNSEvent, context: Context) => {
       continue
     }
 
+    const { groupId: thread_id, userId } = source
     const { replyToken, message } = event
-    const { displayName } = await getProfile(source.groupId, source.userId)
+    const { displayName } = await getProfile(thread_id, userId)
     const question = message.text.replaceAll(`@${NAME}`, '').trim()
-    await storeMessage({ thread_id: source.groupId, content: `${displayName}：${question}` })
+    await storeMessage({ thread_id, content: `${displayName}：${question}` })
 
     if (message.text.includes(`@${NAME}`)) {
       if (question.includes('debug')) {
-        await debug(source.groupId, replyToken, message)
+        await debug(replyToken, thread_id, message)
       }
 
       process.env.OPENAI_API_KEY = await getParameter('/vanilla/openai/apiKey')
-      const response = await chat(source.groupId, `${displayName}：${question}`)
+      const response = await chat(thread_id, `${displayName}：${question}`)
 
       return reply(replyToken, [{ type: 'text', text: response, quoteToken: message.quoteToken }])
     }

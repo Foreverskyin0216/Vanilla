@@ -12,7 +12,7 @@ import { zodResponseFormat } from 'openai/helpers/zod'
 import { z } from 'zod'
 
 import { ADJUSTMENT_PROMPT, CHAT_PROMPT, CHAT_POSITIVE_PROMPT, CLASSIFICATION_PROMPT } from '../prompts'
-import { createDynamoDBSaver } from '../services/dynamoDB'
+import { DynamoDBSaver } from '../services/dynamoDB'
 import { toolkit } from '../tools/searchToolkit'
 import { summarizationGraph } from './subgraphs/summarization'
 
@@ -89,7 +89,7 @@ const adjustmentNode = async ({ messages }: ChatState, { configurable }: Runnabl
   return { conversation: [response] }
 }
 
-const cleanupNode = ({ conversation, messages }: ChatState) => {
+const cleanupNode = async ({ conversation, messages }: ChatState) => {
   return {
     messages: messages.map(({ id }) => new RemoveMessage({ id })),
     conversation: conversation.slice(0, -25).map(({ id }) => new RemoveMessage({ id }))
@@ -99,15 +99,14 @@ const cleanupNode = ({ conversation, messages }: ChatState) => {
 /**
  * Get a compiled chat graph.
  */
-export const chatGraph = () => {
+export const chatGraph = (useCheckpointer: boolean = true) => {
   const annotation = Annotation.Root({
     messages: Annotation<AIMessage[]>({ reducer: messagesStateReducer }),
     conversation: Annotation<HumanMessage[]>({ reducer: messagesStateReducer })
   })
-  const checkpointer = createDynamoDBSaver()
 
   const graph = new StateGraph(annotation)
-    .addNode('summarization', summarizationGraph())
+    .addNode('summarization', summarizationGraph(useCheckpointer))
     .addNode('search', searchNode)
     .addNode('chat', chatNode)
     .addNode('adjustment', adjustmentNode)
@@ -121,5 +120,7 @@ export const chatGraph = () => {
     .addEdge('adjustment', 'cleanup')
     .addEdge('cleanup', '__end__')
 
-  return graph.compile({ checkpointer })
+  return graph.compile({
+    checkpointer: useCheckpointer ? new DynamoDBSaver({ clientConfig: { region: process.env.AWS_REGION } }) : false
+  })
 }

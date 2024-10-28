@@ -42,10 +42,10 @@ interface Configuration {
  * @param {DynamoDBClientConfig} [params.dynamoDBClientConfig] - Optional configuration for the DynamoDB client.
  * @param {SerializerProtocol} [params.serde] - Optional serializer protocol for serializing and deserializing data.
  */
-class DynamoDBSaver extends BaseCheckpointSaver {
+export class DynamoDBSaver extends BaseCheckpointSaver {
   client: DynamoDBDocumentClient
-  checkpoints: string = 'Checkpoints'
-  checkpointWrites: string = 'CheckpointWrites'
+  checkpoint: string = 'Checkpoint'
+  checkpointWrite: string = 'CheckpointWrite'
   separator: string = ':::'
 
   constructor(params: { clientConfig?: DynamoDBClientConfig; serde?: SerializerProtocol }) {
@@ -56,13 +56,13 @@ class DynamoDBSaver extends BaseCheckpointSaver {
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple> {
     const getItem = async ({ thread_id, checkpoint_id, checkpoint_ns }: typeof config.configurable) => {
       if (checkpoint_id) {
-        const getCommand = new GetCommand({ TableName: this.checkpoints, Key: { thread_id, checkpoint_id } })
+        const getCommand = new GetCommand({ TableName: this.checkpoint, Key: { thread_id, checkpoint_id } })
         const { Item } = await this.client.send(getCommand)
         return Item
       }
 
       const queryCommand = new QueryCommand({
-        TableName: this.checkpoints,
+        TableName: this.checkpoint,
         KeyConditionExpression: 'thread_id = :thread_id',
         ExpressionAttributeValues: {
           ':thread_id': thread_id,
@@ -83,22 +83,22 @@ class DynamoDBSaver extends BaseCheckpointSaver {
       return undefined
     }
 
-    const checkpoint = await this.serde.loadsTyped(item.type, item.checkpoint)
-    const metadata = await this.serde.loadsTyped(item.type, item.metadata)
-    const threadCheckpointNS = [item.thread_id, item.checkpoint_id, item.checkpoint_ns].join(this.separator)
+    const checkpoint = await this.loadsTyped(item.type, item.checkpoint)
+    const metadata = await this.loadsTyped(item.type, item.metadata)
+    const checkpoint_write_id = [item.thread_id, item.checkpoint_id, item.checkpoint_ns].join(this.separator)
 
     const pendingWrites = []
     const queryCommand = new QueryCommand({
-      TableName: this.checkpointWrites,
-      KeyConditionExpression: 'thread_id_checkpoint_id_checkpoint_ns = :thread_id_checkpoint_id_checkpoint_ns',
-      ExpressionAttributeValues: { ':thread_id_checkpoint_id_checkpoint_ns': threadCheckpointNS }
+      TableName: this.checkpointWrite,
+      KeyConditionExpression: 'thread_id_checkpoint_id_checkpoint_ns = :checkpoint_write_id',
+      ExpressionAttributeValues: { ':checkpoint_write_id': checkpoint_write_id }
     })
 
     const { Items } = await this.client.send(queryCommand)
 
     for (const writeItem of Items ?? []) {
       const taskId = writeItem.task_index.split(this.separator)[0]
-      const value = await this.serde.loadsTyped(writeItem.type, writeItem.value)
+      const value = await this.loadsTyped(writeItem.type, writeItem.value)
       pendingWrites.push([taskId, writeItem.channel, value])
     }
 
@@ -137,7 +137,7 @@ class DynamoDBSaver extends BaseCheckpointSaver {
     }
 
     const queryCommand = new QueryCommand({
-      TableName: this.checkpoints,
+      TableName: this.checkpoint,
       KeyConditionExpression: keyConditionExpression,
       ExpressionAttributeValues: expressionAttributeValues,
       Limit: limit,
@@ -147,8 +147,8 @@ class DynamoDBSaver extends BaseCheckpointSaver {
     const { Items } = await this.client.send(queryCommand)
 
     for (const item of Items) {
-      const checkpoint = await this.serde.loadsTyped(item.type, item.checkpoint)
-      const metadata = await this.serde.loadsTyped(item.type, item.metadata)
+      const checkpoint = await this.loadsTyped(item.type, item.checkpoint)
+      const metadata = await this.loadsTyped(item.type, item.metadata)
 
       yield {
         config: {
@@ -175,15 +175,15 @@ class DynamoDBSaver extends BaseCheckpointSaver {
 
   async put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata) {
     const { thread_id, checkpoint_ns } = config.configurable
-    const [checkpointType, serializedCheckpoint] = this.serde.dumpsTyped(checkpoint)
-    const [metadataType, serializedMetadata] = this.serde.dumpsTyped(metadata)
+    const [checkpointType, serializedCheckpoint] = this.dumpsTyped(checkpoint)
+    const [metadataType, serializedMetadata] = this.dumpsTyped(metadata)
 
     if (checkpointType !== metadataType) {
       throw new Error('Failed to serialize checkpoint and metadata to the same type.')
     }
 
     const putCommand = new PutCommand({
-      TableName: this.checkpoints,
+      TableName: this.checkpoint,
       Item: {
         thread_id,
         checkpoint_ns,
@@ -208,7 +208,7 @@ class DynamoDBSaver extends BaseCheckpointSaver {
     }
 
     const pendingWriteItems = writes.map(([writeChannel, writeType], index) => {
-      const [dumpedType, serializedValue] = this.serde.dumpsTyped(writeType)
+      const [dumpedType, serializedValue] = this.dumpsTyped(writeType)
       return {
         PutRequest: {
           Item: {
@@ -228,7 +228,7 @@ class DynamoDBSaver extends BaseCheckpointSaver {
     }
 
     const requests = batches.map((batch) => {
-      const batchWriteCommand = new BatchWriteCommand({ RequestItems: { [this.checkpointWrites]: batch } })
+      const batchWriteCommand = new BatchWriteCommand({ RequestItems: { [this.checkpointWrite]: batch } })
       return this.client.send(batchWriteCommand)
     })
 
@@ -242,12 +242,15 @@ class DynamoDBSaver extends BaseCheckpointSaver {
   getWriteSk(taskId: string, index: number) {
     return [taskId, index].join(this.separator)
   }
-}
 
-/**
- * Create a new instance of the DynamoDBSaver.
- */
-export const createDynamoDBSaver = () => new DynamoDBSaver({ clientConfig: { region: process.env.AWS_REGION } })
+  dumpsTyped(data: unknown) {
+    return this.serde.dumpsTyped(data)
+  }
+
+  loadsTyped(type: string, data: Uint8Array | string) {
+    return this.serde.loadsTyped(type, data)
+  }
+}
 
 /**
  * Get all messages in a chat group.
@@ -354,6 +357,53 @@ export const setConfiguration = async (configuration: Configuration) => {
     const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION }))
     const putCommand = new PutCommand({ TableName: 'ChatConfiguration', Item: configuration })
     return client.send(putCommand)
+  } catch (error) {
+    logger.error(error)
+    throw error
+  }
+}
+
+/**
+ * Clear all checkpoints in a chat group.
+ */
+export const clearCheckpoints = async (thread_id: string) => {
+  try {
+    const requests = []
+    const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: process.env.AWS_REGION }))
+    const queryCommand = new QueryCommand({
+      TableName: 'Checkpoint',
+      KeyConditionExpression: 'thread_id = :thread_id',
+      ExpressionAttributeValues: { ':thread_id': thread_id }
+    })
+
+    const { Items } = await client.send(queryCommand)
+    for (const { checkpoint_id } of Items ?? []) {
+      const deleteCommand = new DeleteCommand({ TableName: 'Checkpoint', Key: { thread_id, checkpoint_id } })
+      requests.push(client.send(deleteCommand))
+    }
+
+    const checkpointWriteIds = Array.from(
+      new Set((Items ?? []).map((item) => [thread_id, item.checkpoint_id, item.checkpoint_ns].join(':::')))
+    )
+    for (const checkpointWriteId of checkpointWriteIds) {
+      const queryCommand = new QueryCommand({
+        TableName: 'CheckpointWrite',
+        KeyConditionExpression: 'thread_id_checkpoint_id_checkpoint_ns = :checkpoint_write_id',
+        ExpressionAttributeValues: { ':checkpoint_write_id': checkpointWriteId }
+      })
+      const { Items } = await client.send(queryCommand)
+      for (const { task_index } of Items ?? []) {
+        const request = client.send(
+          new DeleteCommand({
+            TableName: 'CheckpointWrite',
+            Key: { thread_id_checkpoint_id_checkpoint_ns: checkpointWriteId, task_index }
+          })
+        )
+        requests.push(request)
+      }
+    }
+
+    return Promise.all(requests)
   } catch (error) {
     logger.error(error)
     throw error

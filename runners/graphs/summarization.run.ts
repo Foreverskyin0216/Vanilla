@@ -4,9 +4,9 @@ process.env.AWS_REGION = process.env.AWS_REGION || 'ap-southeast-2'
 process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'sk-...'
 
 import { v4 } from 'uuid'
-import { HumanMessage } from '@langchain/core/messages'
+import { type BaseMessage, HumanMessage } from '@langchain/core/messages'
 import { summarizationGraph } from '../../src/graphs/subgraphs/summarization'
-import { storeMessage, clearMessages } from '../../src/services/dynamoDB'
+import { storeMessage, clearMessages, clearCheckpoints } from '../../src/services/dynamoDB'
 
 const question = '總結一下對話紀錄。'
 const chatHistory = `21:39 考量到花費好像很多人會選加拿大。加拿大去美國就業好像有相對應的條款（這個要查，我不確定）
@@ -36,11 +36,14 @@ const run = async () => {
     { messages: [new HumanMessage(question)] },
     { configurable: { thread_id, question, chat_mode, model_name } }
   )
-  const finalSummary = messages[messages.length - 1].content.toString() as string
 
-  await clearMessages(thread_id)
+  await Promise.all([clearCheckpoints(thread_id), clearMessages(thread_id)])
 
-  return finalSummary
+  return (messages as BaseMessage[])
+    .map((message) => {
+      return `${message.getType()}: ${message.content.toString()}`
+    })
+    .join('\n')
 }
 
 ;(async () => console.log(await run()))()
