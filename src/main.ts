@@ -7,7 +7,8 @@ import { logger } from './utils/logger'
 process.on('uncaughtException', (error) => {
   if (error.name === 'InputBufferUnderrunError') {
     logger.error('InputBufferUnderrunError')
+  } else {
+    throw error
   }
-  throw error
 })
 ;(async () => await new SelfBot().login())()
