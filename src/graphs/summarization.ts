@@ -9,8 +9,8 @@ import { Annotation, Send, StateGraph } from '@langchain/langgraph'
 import { ChatOpenAI } from '@langchain/openai'
 import { collapseDocs, splitListOfDocs } from 'langchain/chains/combine_documents/reduce'
 
-import { MAP_PROMPT, REDUCE_PROMPT } from '../../prompts'
-import { DynamoDBSaver, getMessages } from '../../services/dynamoDB'
+import { MAP_PROMPT, REDUCE_PROMPT } from '../prompts'
+import { DynamoDBSaver, getMessages } from '../services/dynamoDB'
 
 interface OverallState {
   chatHistory: AIMessage[]
@@ -108,7 +108,7 @@ const generateFinalSummary = async (state: OverallState, { configurable }: Runna
 /**
  * Get a summarization graph.
  */
-export const summarizationGraph = (useCheckpointer: boolean = true) => {
+export const summarizationGraph = () => {
   const annotation = Annotation.Root({
     chatHistory: Annotation<AIMessage[]>({ reducer: (x, y) => x.concat(y) }),
     collapsedSummaries: Annotation<Document[]>({ reducer: (x, y) => x.concat(y) }),
@@ -129,7 +129,5 @@ export const summarizationGraph = (useCheckpointer: boolean = true) => {
     .addConditionalEdges('collapseSummaries', shouldCollapse, ['collapseSummaries', 'generateFinalSummary'])
     .addEdge('generateFinalSummary', '__end__')
 
-  return graph.compile({
-    checkpointer: useCheckpointer ? new DynamoDBSaver({ clientConfig: { region: process.env.AWS_REGION } }) : false
-  })
+  return graph.compile({ checkpointer: new DynamoDBSaver({ clientConfig: { region: process.env.AWS_REGION } }) })
 }

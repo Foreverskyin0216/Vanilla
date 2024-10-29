@@ -53,7 +53,7 @@ export const toolkit = [
 
   tool(
     async ({ link }, { configurable }: RunnableConfig) => {
-      const model_name = (configurable?.model_name ?? 'gpt-4o-mini') as string
+      const modelName = (configurable?.model_name ?? 'gpt-4o-mini') as string
       const question = (configurable?.question ?? '') as string
 
       const loader = new CheerioWebBaseLoader(link)
@@ -62,7 +62,7 @@ export const toolkit = [
       const store = await MemoryVectorStore.fromDocuments(await splitter.splitDocuments(docs), new OpenAIEmbeddings())
 
       const chain = await createStuffDocumentsChain({
-        llm: new ChatOpenAI({ model_name }),
+        llm: new ChatOpenAI({ modelName }),
         outputParser: new StringOutputParser(),
         prompt: new PromptTemplate({ template: RETRIEVAL_PROMPT, inputVariables: ['question', 'context'] })
       })

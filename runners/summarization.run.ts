@@ -5,8 +5,8 @@ process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'sk-...'
 
 import { v4 } from 'uuid'
 import { type BaseMessage, HumanMessage } from '@langchain/core/messages'
-import { summarizationGraph } from '../../src/graphs/subgraphs/summarization'
-import { storeMessage, clearMessages, clearCheckpoints } from '../../src/services/dynamoDB'
+import { summarizationGraph } from '../src/graphs/summarization'
+import { storeMessage, clearMessages, clearCheckpoints } from '../src/services/dynamoDB'
 
 const question = '總結一下對話紀錄。'
 const chatHistory = `21:39 考量到花費好像很多人會選加拿大。加拿大去美國就業好像有相對應的條款（這個要查，我不確定）

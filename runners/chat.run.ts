@@ -5,8 +5,8 @@ process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'sk-...'
 
 import { v4 } from 'uuid'
 import { type BaseMessage, HumanMessage } from '@langchain/core/messages'
-import { chatGraph } from '../../src/graphs/chat'
-import { clearCheckpoints, clearMessages } from '../../src/services/dynamoDB'
+import { chatGraph } from '../src/graphs/chat'
+import { clearCheckpoints, clearMessages } from '../src/services/dynamoDB'
 
 const question = '記住我的名字是Steve。'
 const followUp = '你還記得我的名字嗎？'
@@ -14,11 +14,10 @@ const followUp = '你還記得我的名字嗎？'
 const thread_id = `test-thread-${v4()}`
 const chat_mode = 'positive'
 const model_name = 'gpt-4o-mini'
-const useCheckpointer = true
 
 const run = async () => {
   // First round of chat
-  await chatGraph(useCheckpointer).invoke(
+  await chatGraph().invoke(
     {
       conversation: [new HumanMessage(question)],
       messages: [new HumanMessage(question)]
@@ -29,7 +28,7 @@ const run = async () => {
   )
 
   // Second round of chat
-  const { conversation } = await chatGraph(useCheckpointer).invoke(
+  const { conversation } = await chatGraph().invoke(
     {
       conversation: [new HumanMessage(followUp)],
       messages: [new HumanMessage(followUp)]

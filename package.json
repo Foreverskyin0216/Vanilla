@@ -5,7 +5,7 @@
   "author": "Foreverskyin0216",
   "license": "ISC",
   "scripts": {
-    "start": "npx tsx src/handlers/selfBot.ts",
+    "start": "npx tsx src/main.ts",
     "test": "export POWERTOOLS_DEV=true && npm run test:coverage -- --passWithNoTests",
     "test:coverage": "jest --coverage --silent=false",
     "lint": "eslint .",
@@ -39,6 +39,7 @@
     "@commitlint/cli": "^19.5.0",
     "@commitlint/config-conventional": "^19.5.0",
     "@eslint/js": "^9.13.0",
+    "@evex/linejs-types": "npm:@jsr/evex__linejs-types@^1.7.1",
     "@types/aws-lambda": "^8.10.145",
     "@types/dotenv": "^6.1.1",
     "@types/eslint__js": "^8.42.3",

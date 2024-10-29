@@ -70,8 +70,6 @@ describe('Spec: DynamoDB Service', () => {
           response = await dynamoDBSaver.getTuple({ configurable: { thread_id, checkpoint_id, checkpoint_ns } })
         })
 
-        afterAll(() => mockSend.mockClear())
-
         it('Then it should return undefined', () => {
           expect(response).toBeUndefined()
         })
@@ -104,8 +102,6 @@ describe('Spec: DynamoDB Service', () => {
           response = await dynamoDBSaver.getTuple({ configurable: { thread_id, checkpoint_id, checkpoint_ns } })
         })
 
-        afterAll(() => mockSend.mockClear())
-
         it('Then it should return the correct CheckpointTuple', () => {
           const encoder = new TextEncoder()
           expect(response).toEqual({
@@ -136,8 +132,6 @@ describe('Spec: DynamoDB Service', () => {
 
           response = await dynamoDBSaver.getTuple({ configurable: { thread_id, checkpoint_ns } })
         })
-
-        afterAll(() => mockSend.mockClear())
 
         it('Then it should return the correct CheckpointTuple', () => {
           expect(response).toEqual({
@@ -194,8 +188,6 @@ describe('Spec: DynamoDB Service', () => {
           response = dynamoDBSaver.list({ configurable: { thread_id } }, { limit })
         })
 
-        afterAll(() => mockSend.mockClear())
-
         it('Then it should return the correct CheckpointTuple', async () => {
           expect((await response.next()).value).toEqual({
             config: { configurable: { thread_id, checkpoint_id, checkpoint_ns } },
@@ -225,8 +217,6 @@ describe('Spec: DynamoDB Service', () => {
           )
         })
 
-        afterAll(() => mockSend.mockClear())
-
         it('Then it should return the correct CheckpointTuple', async () => {
           expect((await response.next()).value).toEqual({
             config: { configurable: { thread_id, checkpoint_id, checkpoint_ns } },
@@ -250,8 +240,6 @@ describe('Spec: DynamoDB Service', () => {
 
           response = dynamoDBSaver.list({ configurable: { thread_id } }, { limit })
         })
-
-        afterAll(() => mockSend.mockClear())
 
         it('Then it should return the correct CheckpointTuple', async () => {
           expect((await response.next()).value).toEqual({
@@ -303,8 +291,6 @@ describe('Spec: DynamoDB Service', () => {
       describe('And the checkpointType is not equal to the metadataType', () => {
         const unit8Metadata = new Uint8Array(Buffer.from('metadata'))
 
-        afterAll(() => mockSend.mockClear())
-
         it('Then it should throw an error as expected', async () => {
           await expect(dynamoDBSaver.put(config, checkpoint, unit8Metadata)).rejects.toThrow(
             'Failed to serialize checkpoint and metadata to the same type.'
@@ -314,8 +300,6 @@ describe('Spec: DynamoDB Service', () => {
 
       describe('And the checkpointType is equal to the metadataType', () => {
         beforeAll(async () => (response = await dynamoDBSaver.put(config, checkpoint, metadata)))
-
-        afterAll(() => mockSend.mockClear())
 
         it('Then it should return the correct LangGraphRunnableConfig', async () => {
           expect(response).toEqual({
@@ -364,8 +348,6 @@ describe('Spec: DynamoDB Service', () => {
       describe('And calling without the checkpoint_id', () => {
         const config = { configurable: { thread_id, checkpoint_ns } }
 
-        afterAll(() => mockSend.mockClear())
-
         it('Then it should throw an error as expected', async () => {
           await expect(dynamoDBSaver.putWrites(config, pendingWrites, task_id)).rejects.toThrow('Missing checkpoint_id')
         })
@@ -377,8 +359,6 @@ describe('Spec: DynamoDB Service', () => {
         beforeAll(async () => {
           await dynamoDBSaver.putWrites(config, pendingWrites, task_id)
         })
-
-        afterAll(() => mockSend.mockClear())
 
         it('Then it should call the PutCommand method with the correct input', () => {
           expect(mockSend).toHaveBeenCalledWith(batchWriteCommand)
@@ -408,8 +388,6 @@ describe('Spec: DynamoDB Service', () => {
           response = await getMessages(thread_id)
         })
 
-        afterAll(() => mockSend.mockClear())
-
         it('Then it should return an empty array', () => {
           expect(response).toEqual([])
         })
@@ -423,8 +401,6 @@ describe('Spec: DynamoDB Service', () => {
 
           response = await getMessages(thread_id)
         })
-
-        afterAll(() => mockSend.mockClear())
 
         it('Then it should return the correct array of messages', () => {
           expect(response).toEqual([message])
@@ -441,16 +417,13 @@ describe('Spec: DynamoDB Service', () => {
 
       beforeAll(async () => await storeMessage(message))
 
-      afterAll(() => mockSend.mockClear())
-
       it('Then it should call the PutCommand method with the correct input', () => {
         expect(mockSend).toHaveBeenCalledWith({ TableName: 'Message', Item: expect.objectContaining(message) })
       })
     })
 
     describe('When calling the clearMessages method', () => {
-      const thread_id = v4()
-      const created_at = Date.now()
+      const [thread_id, created_at] = [v4(), Date.now()]
 
       const queryCommand = {
         TableName: 'Message',
@@ -469,8 +442,6 @@ describe('Spec: DynamoDB Service', () => {
         when(mockSend).calledWith(deleteCommand).mockResolvedValue({})
         await clearMessages(thread_id)
       })
-
-      afterAll(() => mockSend.mockClear())
 
       it('Then it should call the DeleteCommand method with the correct input', () => {
         expect(mockSend).toHaveBeenCalledWith(deleteCommand)
@@ -497,8 +468,6 @@ describe('Spec: DynamoDB Service', () => {
           response = await getConfiguration(thread_id)
         })
 
-        afterAll(() => mockSend.mockClear())
-
         it('Then it should return an empty object', () => {
           expect(response).toBeUndefined()
         })
@@ -511,8 +480,6 @@ describe('Spec: DynamoDB Service', () => {
             .mockResolvedValue({ Items: [configuration] })
           response = await getConfiguration(thread_id)
         })
-
-        afterAll(() => mockSend.mockClear())
 
         it('Then it should return the correct configuration', () => {
           expect(response).toEqual(configuration)
@@ -528,8 +495,6 @@ describe('Spec: DynamoDB Service', () => {
       const configuration = { thread_id: v4(), chat_mode: 'normal', model_name: 'gpt-4o-mini' }
 
       beforeAll(async () => await setConfiguration(configuration))
-
-      afterAll(() => mockSend.mockClear())
 
       it('Then it should call the PutCommand method with the correct input', () => {
         expect(mockSend).toHaveBeenCalledWith({ TableName: 'ChatConfiguration', Item: configuration })
@@ -570,8 +535,6 @@ describe('Spec: DynamoDB Service', () => {
           response = await clearCheckpoints(thread_id)
         })
 
-        afterAll(() => mockSend.mockClear())
-
         it('Then it should return an empty array', () => {
           expect(response).toEqual([])
         })
@@ -601,8 +564,6 @@ describe('Spec: DynamoDB Service', () => {
 
           response = await clearCheckpoints(thread_id)
         })
-
-        afterAll(() => mockSend.mockClear())
 
         it('Then it should return an empty array', () => {
           expect(response).toEqual(['Checkpoint deleted'])
@@ -642,8 +603,6 @@ describe('Spec: DynamoDB Service', () => {
           when(mockSend).calledWith(checkpointWriteDeleteCommand).mockResolvedValue('CheckpointWrite deleted')
           response = await clearCheckpoints(thread_id)
         })
-
-        afterAll(() => mockSend.mockClear())
 
         it('Then it should return the correct response', () => {
           expect(response).toEqual(['Checkpoint deleted', 'CheckpointWrite deleted'])

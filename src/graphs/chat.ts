@@ -14,14 +14,14 @@ import { z } from 'zod'
 import { ADJUSTMENT_PROMPT, CHAT_PROMPT, CHAT_POSITIVE_PROMPT, CLASSIFICATION_PROMPT } from '../prompts'
 import { DynamoDBSaver } from '../services/dynamoDB'
 import { toolkit } from '../tools/searchToolkit'
-import { summarizationGraph } from './subgraphs/summarization'
+import { summarizationGraph } from './summarization'
 
 interface ChatState {
   messages: AIMessage[]
   conversation: (AIMessage | HumanMessage)[]
 }
 
-const shouldInvoke = async (_: ChatState, { configurable }: RunnableConfig) => {
+export const shouldInvoke = async (_: ChatState, { configurable }: RunnableConfig) => {
   const modelName = (configurable?.model_name ?? 'gpt-4o-mini') as string
   const question = (configurable?.question ?? '') as string
 
@@ -40,7 +40,7 @@ const shouldInvoke = async (_: ChatState, { configurable }: RunnableConfig) => {
   return intent
 }
 
-const searchNode = async ({ messages }: ChatState, { configurable }: RunnableConfig) => {
+export const searchNode = async ({ messages }: ChatState, { configurable }: RunnableConfig) => {
   const question = (configurable?.question ?? '') as string
   const modelName = (configurable?.model_name ?? 'gpt-4o-mini') as string
   const openAI = new ChatOpenAI({ modelName }).bindTools(toolkit)
@@ -48,12 +48,12 @@ const searchNode = async ({ messages }: ChatState, { configurable }: RunnableCon
   return { messages: [response] }
 }
 
-const shouldUseSearchTools = ({ messages }: ChatState) => {
+export const shouldUseSearchTools = ({ messages }: ChatState) => {
   const message = messages[messages.length - 1] as AIMessage
   return message?.tool_calls?.length > 0 ? 'searchTools' : 'adjustment'
 }
 
-const chatNode = async ({ conversation }: ChatState, { configurable }: RunnableConfig) => {
+export const chatNode = async ({ conversation }: ChatState, { configurable }: RunnableConfig) => {
   const chatMode = (configurable?.chat_mode ?? 'normal') as string
   const modelName = (configurable?.model_name ?? 'gpt-4o-mini') as string
   const question = (configurable?.question ?? '') as string
@@ -65,7 +65,7 @@ const chatNode = async ({ conversation }: ChatState, { configurable }: RunnableC
   })
 
   const response = await prompt.pipe(openAI).invoke({
-    question: question,
+    question,
     context: conversation
       .filter((message) => message.additional_kwargs?.chatMode === chatMode || message.getType() === 'human')
       .map((message) => message.content)
@@ -75,7 +75,7 @@ const chatNode = async ({ conversation }: ChatState, { configurable }: RunnableC
   return { messages: [response] }
 }
 
-const adjustmentNode = async ({ messages }: ChatState, { configurable }: RunnableConfig) => {
+export const adjustmentNode = async ({ messages }: ChatState, { configurable }: RunnableConfig) => {
   const chatMode = (configurable?.chat_mode ?? 'normal') as string
   const modelName = (configurable?.model_name ?? 'gpt-4o-mini') as string
   const message = messages[messages.length - 1]
@@ -89,7 +89,7 @@ const adjustmentNode = async ({ messages }: ChatState, { configurable }: Runnabl
   return { conversation: [response] }
 }
 
-const cleanupNode = async ({ conversation, messages }: ChatState) => {
+export const cleanupNode = ({ conversation, messages }: ChatState) => {
   return {
     messages: messages.map(({ id }) => new RemoveMessage({ id })),
     conversation: conversation.slice(0, -25).map(({ id }) => new RemoveMessage({ id }))
@@ -99,14 +99,14 @@ const cleanupNode = async ({ conversation, messages }: ChatState) => {
 /**
  * Get a compiled chat graph.
  */
-export const chatGraph = (useCheckpointer: boolean = true) => {
+export const chatGraph = () => {
   const annotation = Annotation.Root({
     messages: Annotation<AIMessage[]>({ reducer: messagesStateReducer }),
     conversation: Annotation<HumanMessage[]>({ reducer: messagesStateReducer })
   })
 
   const graph = new StateGraph(annotation)
-    .addNode('summarization', summarizationGraph(useCheckpointer))
+    .addNode('summarization', summarizationGraph())
     .addNode('search', searchNode)
     .addNode('chat', chatNode)
     .addNode('adjustment', adjustmentNode)
@@ -120,7 +120,5 @@ export const chatGraph = (useCheckpointer: boolean = true) => {
     .addEdge('adjustment', 'cleanup')
     .addEdge('cleanup', '__end__')
 
-  return graph.compile({
-    checkpointer: useCheckpointer ? new DynamoDBSaver({ clientConfig: { region: process.env.AWS_REGION } }) : false
-  })
+  return graph.compile({ checkpointer: new DynamoDBSaver({ clientConfig: { region: process.env.AWS_REGION } }) })
 }

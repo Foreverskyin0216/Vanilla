@@ -1,6 +1,3 @@
-import 'dotenv/config'
-process.env.AWS_REGION = process.env.AWS_REGION || 'ap-southeast-2'
-
 import { Client } from '@evex/linejs'
 
 import { HumanMessage } from '@langchain/core/messages'
@@ -8,29 +5,19 @@ import { chatGraph } from '../graphs/chat'
 
 import { clearCheckpoints, clearMessages, getConfiguration, setConfiguration, storeMessage } from '../services/dynamoDB'
 import { getParameter, setParameter } from '../services/ssm'
-
-import { logger } from '..//utils/logger'
 import { parseDebugCommand } from '../utils/parser'
 
-// Workaround for https://github.com/evex-dev/linejs/issues/45
-process.on('uncaughtException', (error) => {
-  if (error.name === 'InputBufferUnderrunError') {
-    return logger.error('InputBufferUnderrunError')
-  }
-  throw error
-})
-
-class SelfBot {
+export class SelfBot {
   client: Client
-  name: string = '香草'
+  name: string
 
-  constructor() {
+  constructor(name: string = '香草') {
     this.client = new Client()
+    this.name = name
 
     this.client.on('ready', async () => {
       process.env.OPENAI_API_KEY = await getParameter('/vanilla/openai/apiKey')
       await setParameter('/vanilla/line/refreshToken', this.client.storage.get('refreshToken') as string)
-      logger.info('Logged in')
     })
 
     this.client.on('update:authtoken', async (authToken) => {
@@ -49,19 +36,15 @@ class SelfBot {
             if (contentMetadata?.MENTION && content.includes(`@${this.name}`)) {
               if (question.includes('debug')) {
                 const state = await this.debug(squareChatMid, question)
-                return Promise.all(state === 'OK' ? [react(2)] : [react(6), reply(state)])
+                await Promise.all(state === 'OK' ? [react(2)] : [react(6), reply(state)])
+              } else {
+                const response = await this.chat(squareChatMid, `${user}：${question}`)
+                await reply(response)
               }
-
-              const response = await this.chat(squareChatMid, `${user}：${question}`)
-
-              return reply(response)
             }
           }
-
-          return 'Do nothing'
         } catch (err) {
-          const message = JSON.stringify({ error: err.name }, null, 2)
-          return Promise.all([react(6), reply(message)])
+          await Promise.all([react(6), reply(err.message)])
         }
       }
     )
@@ -88,8 +71,8 @@ class SelfBot {
       }
 
       case 'configure': {
-        const chat_mode = params['chat-mode'] || 'normal'
-        const model_name = params['model'] || 'gpt-4o-mini'
+        const chat_mode = params['chat-mode']
+        const model_name = params['model']
         await setConfiguration({ thread_id: squareChatMid, chat_mode, model_name })
         break
       }
@@ -141,7 +124,6 @@ class SelfBot {
   }
 
   public async login() {
-    logger.info('Logging in...')
     const authToken = await getParameter('/vanilla/line/authToken')
     const refreshToken = await getParameter('/vanilla/line/refreshToken')
 
@@ -156,5 +138,3 @@ class SelfBot {
     return this.client.login({ email, password, device: 'DESKTOPMAC', v3: true })
   }
 }
-
-;(async () => await new SelfBot().login())()
