@@ -1,5 +1,5 @@
 import { messagingApi } from '@line/bot-sdk'
-import { getParameter } from '../services/ssm'
+import { getParameter } from './ssm'
 
 export type Message = messagingApi.ImageMessage | messagingApi.TextMessage
 
