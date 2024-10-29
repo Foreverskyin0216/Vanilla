@@ -21,7 +21,7 @@ package:
 provider:
   name: aws
   region: ap-southeast-2
-  runtime: nodejs20.x
+  runtime: nodejs18.x
   memorySize: 512
   timeout: 29
   stage: v1
