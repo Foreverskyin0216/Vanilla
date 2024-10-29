@@ -90,7 +90,7 @@ export class SelfBot {
         break
       }
 
-      case 'revoke': {
+      case 'refresh': {
         await this.client.tryRefreshToken()
         await this.client.logout()
         await this.login()

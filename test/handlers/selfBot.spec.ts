@@ -220,8 +220,8 @@ describe('Spec: SelfBot Handler', () => {
           })
         })
 
-        describe('And the command is revoke', () => {
-          const content = `@${selfBot.name} debug revoke`
+        describe('And the command is refresh', () => {
+          const content = `@${selfBot.name} debug refresh`
 
           beforeAll(() => {
             mockSSMClientSend.mockResolvedValue({ Parameter: { Value: v4() } })

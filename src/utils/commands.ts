@@ -27,6 +27,6 @@ commands:
     parameters: ~
   - name: cleanup
     parameters: ~
-  - name: revoke
+  - name: refresh
     parameters: ~
 `
