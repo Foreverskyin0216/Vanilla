@@ -54,7 +54,7 @@ Reference: [Deploy to AWS](https://www.serverless.com/framework/docs/providers/a
 `sls deploy`
 
 ## 📦 Features
-- Chat：與香草進行對話。
+- Chat：與Vanilla進行對話。
 - Search：若Vanilla判斷你的問題需要進行搜尋，她會自動幫你搜尋。
 - Summarize：可要求Vanilla幫你針對對話紀錄進行摘要。
 - Debug：詳見 - [Debug 參數](https://github.com/Foreverskyin0216/Vanilla/blob/main/src/utils/commands.ts)
